@@ -1,12 +1,10 @@
 unit SharedPointer;
+{$mode delphi}
 
 interface
 
-uses
-  System.Generics.Collections;
-
 type
-  TDeallocator = reference to procedure(AObj: TObject);
+  TDeallocator = {$IFNDEF FPC}reference to{$ENDIF} procedure(AObj: TObject);
 
   TShared<T: class> = record
   private
@@ -18,7 +16,9 @@ type
 
     function Temporary: T;
 
+{$IFNDEF FPC}
     function Cast<TT: class>: TShared<TT>;
+{$ENDIF}
 
     { Release the object from the TShared<T> convention.  The object
       will no-longer be Free'ed using TShared<T> and should be managed manually. }
@@ -36,9 +36,7 @@ type
 
   TSharedList<T: class> = record
   private
-    FFreeTheValue: IInterface;
-    function List: TList<TShared<T>>;
-    procedure Initialize();
+    FList: array of TShared<T>;
     function GetItem(I: Integer): T;
     function GetSharedItem(I: Integer): TShared<T>;
   public
@@ -50,9 +48,6 @@ type
   end;
 
 implementation
-
-uses
-  System.SysUtils;
 
 function TShared<T>.Temporary: T;
 begin
@@ -78,16 +73,19 @@ begin
     end
     else
     begin
-      FreeAndNil(FObjectToFree);
+      FObjectToFree.Free;
+      FObjectToFree := nil;
     end;
   end;
 end;
 
+{$IFNDEF FPC}
 function TShared<T>.Cast<TT>: TShared<TT>;
 begin
   Result := TShared<TT>.Create(nil);
   Result.FFreeTheValue := FFreeTheValue;
 end;
+{$ENDIF}
 
 constructor TShared<T>.Create(AValue: T);
 begin
@@ -114,50 +112,28 @@ end;
 
 procedure TSharedList<T>.Add(AObject: TShared<T>);
 begin
-  Initialize;
-  List.Add(AObject);
+  SetLength(FList, Length(FList)+1);
+  FList[Length(FList)-1] := AObject;
 end;
 
 procedure TSharedList<T>.Clear;
 begin
-  FFreeTheValue := nil;
+  SetLength(FList, 0);
 end;
 
 function TSharedList<T>.Count: Integer;
 begin
-  Initialize;
-  Result := List.Count;
+  Result := Length(FList);
 end;
 
 function TSharedList<T>.GetSharedItem(I: Integer): TShared<T>;
-var
-  Temp: TList<TShared<T>>;
 begin
-  Temp := List;
-  if Assigned(Temp) then
-    Result := Temp.Items[I];
-end;
-
-procedure TSharedList<T>.Initialize;
-begin
-  if (FFreeTheValue = nil) then
-  begin
-    FFreeTheValue := TFreeTheValue.Create(TList<TShared<T>>.Create);
-  end;
+  Result := FList[I];
 end;
 
 function TSharedList<T>.GetItem(I: Integer): T;
-var
-  Temp: TShared<T>;
 begin
-  Temp := GetSharedItem(I);
-  Result := Temp.Temporary;
-end;
-
-function TSharedList<T>.List: TList<TShared<T>>;
-begin
-  Initialize;
-  Result := (FFreeTheValue as TFreeTheValue).FObjectToFree as TList<TShared<T>>;
+  Result := GetSharedItem(I).Temporary;
 end;
 
 end.
